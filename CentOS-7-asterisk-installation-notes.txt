@@ -1,0 +1,82 @@
+# Installing Asterisk 16 on CentOS 7
+
+sestatus
+nano /etc/selinux/config # can skip if output of sestatus is "disabled"
+cat /etc/selinux/config # else set SELINUX=disabled
+
+systemctl stop firewalld
+systemctl disable firewalld
+
+yum -y update
+
+# Optional. if you want to remove old kernel still hanging around
+package-cleanup --oldkernels --count=1
+
+yum install epel-release
+
+reboot
+
+cd /usr/src/
+wget http://downloads.asterisk.org/pub/telephony/asterisk/asterisk-16-current.tar.gz
+tar zxf asterisk-16-current.tar.gz
+
+cd asterisk-16.30.0/
+sudo ./contrib/scripts/install_prereq install
+sudo ./configure --with-jansson-bundled
+
+# before menuselect could work, had to follow https://docs.bitnami.com/virtual-machine/faq/configuration/install-virtualbox-guest-additions/
+# to enable expanding the window of the VM, so that the ncurses interface will not fail with the error that the
+# screen available to it is too small.
+
+sudo make menuselect
+
+# check the boxes for chan_sip and chan_pjsip for Channel Drivers
+# check codec_g729a under Codec Translators
+# uncheck GSM and check WAV, ULAW, G722 and G729 for Core Sound Packages, Music On Hold, and Extras Sound
+
+sudo make
+sudo make samples
+sudo make config
+sudo ldconfig
+
+# optional
+sudo make install-logrotate
+
+# may have to do this to get init script correctly working.
+
+If you add this to the /etc/init.d/asterisk near the start you should be fine
+
+if ! [ -d /var/run/asterisk ] ; then
+mkdir /var/run/asterisk
+chown $AST_USER:$AST_GROUP /var/run/asterisk
+exit 0
+fi
+
+systemctl enable asterisk
+systemctl start asterisk
+
+sudo reboot # just to be safe?
+
+## To Test with dial plan in default context with extension 600
+
+sudo nano /etc/asterisk/sip.conf # add new endpoint at the end such as
+                                 # ; #### Extensions #######
+                                 # [101]
+                                 # type=friend
+                                 # secret=asterisk
+                                 # disallow=all
+                                 # allow=ulaw
+                                 # host=dynamic
+                                 # context=default
+                                 # qualify=yes
+								
+## To Set up ARI server.
+
+sudo nano /etc/asterisk/modules.conf # add load res_ari.so at the end
+sudo nano /etc/asterisk/http.conf # uncomment enabled and bindaddr, and set bindaddr to 0.0.0.0 or any public IP
+sudo nano /etc/asterisk/ari.conf # add new user block at the end such as 
+                            # [someone]
+                            # type = user
+                            # read_only = no
+                            # password = someting
+sudo reboot # or sudo systemctl restart asterisk
